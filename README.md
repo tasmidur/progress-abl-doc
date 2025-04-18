@@ -572,3 +572,4 @@ RUN updateDatabase.
 - **Whitepapers**: Download from www.progress.com for advanced topics like performance tuning.
 
 This document covers the essentials for writing robust ABL code. For specific use cases or deeper dives into topics like object-oriented ABL or web integration, consult the referenced documentation or request tailored examples.
+
