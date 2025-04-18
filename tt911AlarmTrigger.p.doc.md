@@ -539,6 +539,342 @@ The line `DEFINE INPUT PARAMETER TABLE FOR tt911AlarmTrigger` in the provided Pr
 
 ---
 
+Below is a **flow chart** representation of the 911 Alarm Trigger Process based on the provided pseudo-code. Since I cannot directly render a graphical flow chart in this text-based format, I will describe the flow chart in a structured textual format using a hierarchical outline that mirrors the decision points, actions, and flow of the program. This description can be used to visualize or create a flow chart using tools like Lucidchart, Draw.io, or Microsoft Visio. Each step corresponds to the pseudo-code, and I’ll include connectors to show the flow.
+
+---
+
+### Flow Chart for 911 Alarm Trigger Process
+
+#### Start
+- **Symbol**: Oval
+- **Description**: Start of the 911 Alarm Trigger Process
+- **Action**: Begin execution of the program
+- **Connector**: Arrow to "Initialize Variables"
+
+#### Initialize Variables
+- **Symbol**: Rectangle (Process)
+- **Description**: Set initial values for variables
+- **Action**:
+  - `SET opResult = false`
+  - `SET opiCompany_num = 0`
+- **Connector**: Arrow to "Check Input Data"
+
+#### Check Input Data
+- **Symbol**: Diamond (Decision)
+- **Description**: Check if `tt911AlarmTrigger` has data
+- **Condition**: `IF tt911AlarmTrigger has no data`
+  - **Yes**:
+    - **Action**: `RETURN "No data to process"`
+    - **Symbol**: Oval (End)
+    - **Description**: Exit program
+  - **No**:
+    - **Connector**: Arrow to "Extract Call Details"
+
+#### Extract Call Details
+- **Symbol**: Rectangle (Process)
+- **Description**: Extract key call details from temp-table
+- **Action**:
+  - `SET ipBWEnterprise = tt911AlarmTrigger.BWenterpriseId`
+  - `SET ipBWGroup = tt911AlarmTrigger.BWgroupId`
+  - `SET p_origination_ext# = tt911AlarmTrigger.BWuserExtension`
+  - `SET BWdialedDigits = tt911AlarmTrigger.BWdialedDigits`
+  - `SET BWcallStartTime = tt911AlarmTrigger.BWcallStartTime`
+  - `SET BWsrcIpAdd = tt911AlarmTrigger.BWsrcIpAdd`
+  - `SET BWclidName = tt911AlarmTrigger.BWclidName`
+- **Connector**: Arrow to "Log Entry"
+
+#### Log Entry
+- **Symbol**: Rectangle (Process)
+- **Description**: Log the call processing entry
+- **Action**: `LOG "Processing call" with timestamp, ipBWEnterprise, ipBWGroup, p_origination_ext#`
+- **Connector**: Arrow to "Determine Company Number"
+
+#### Determine Company Number
+- **Symbol**: Diamond (Decision)
+- **Description**: Check `ipBWGroup` to determine company number
+- **Condition**: `IF ipBWGroup NOT IN ["ooma-emergency", "peerless-emergency"]`
+  - **Yes**:
+    - **Action**: `RUN BWgetJazzCompanyNum procedure to set opiCompany_num`
+    - **Symbol**: Rectangle (Process)
+    - **Connector**: Arrow to "Validate Company Number"
+  - **No**:
+    - **Connector**: Arrow to "Check Peerless Emergency"
+
+#### Check Peerless Emergency
+- **Symbol**: Diamond (Decision)
+- **Description**: Check if `ipBWGroup = "peerless-emergency"`
+- **Condition**: `IF ipBWGroup = "peerless-emergency"`
+  - **Yes**:
+    - **Action**: `SET opiCompany_num = 0`
+    - **Symbol**: Rectangle (Process)
+    - **Subprocess**: Iterate `if-Interface-ComLib-Parameter` where `InterfaceGroup = "PBX" and AttrName = "BWEnterpriseCode"`
+      - **Condition**: `IF AttrValue matches ipBWEnterprise`
+        - **Action**: `SET opiCompany_num = company_num` and `BREAK`
+      - **Symbol**: Rectangle (Process)
+    - **Condition**: `IF opiCompany_num = 0`
+      - **Yes**:
+        - **Action**: `LOG "Property not found for peerless-emergency"`
+        - **Action**: `RETURN`
+        - **Symbol**: Oval (End)
+      - **No**:
+        - **Connector**: Arrow to "Validate Company Number"
+  - **No**:
+    - **Connector**: Arrow to "Check User Mapping"
+
+#### Check User Mapping
+- **Symbol**: Rectangle (Process)
+- **Description**: Find company number using user mapping
+- **Action**: `FIND BW-ExtensionToUserName_Map where BWuserId matches tt911AlarmTrigger.BWuserId`
+- **Condition**: `IF found`
+  - **Yes**:
+    - **Action**: `SET opiCompany_num = Company_Num`
+    - **Action**: `SET p_origination_ext# = Extension_Num`
+    - **Connector**: Arrow to "Validate Company Number"
+  - **No**:
+    - **Connector**: Arrow to "Check Line Port Mapping"
+
+#### Check Line Port Mapping
+- **Symbol**: Rectangle (Process)
+- **Description**: Find company number using line port mapping
+- **Action**: `FIND BW-ExtensionToLinePort_Map where BWuserId matches tt911AlarmTrigger.BWuserId`
+- **Condition**: `IF found`
+  - **Yes**:
+    - **Action**: `SET opiCompany_num = Company_Num`
+    - **Action**: `SET p_origination_ext# = Extension_Num`
+    - **Connector**: Arrow to "Validate Company Number"
+  - **No**:
+    - **Connector**: Arrow to "Fallback Company Lookup"
+
+#### Fallback Company Lookup
+- **Symbol**: Diamond (Decision)
+- **Description**: Check if fallback lookup is needed
+- **Condition**: `IF opiCompany_num = 0 AND ipBWEnterprise is not empty`
+  - **Yes**:
+    - **Action**: `FIND if-Interface-ComLib-Parameter where AttrValue matches ipBWEnterprise`
+    - **Condition**: `IF found`
+      - **Yes**:
+        - **Action**: `SET opiCompany_num = company_num`
+      - **No**: (No action, proceed)
+    - **Connector**: Arrow to "Validate Company Number"
+  - **No**:
+    - **Connector**: Arrow to "Validate Company Number"
+
+#### Validate Company Number
+- **Symbol**: Diamond (Decision)
+- **Description**: Check company number
+- **Condition**: `IF opiCompany_num = 0`
+  - **Yes**:
+    - **Action**: `LOG "Company/Property not found"`
+    - **Action**: `RETURN`
+    - **Symbol**: Oval (End)
+  - **No**:
+    - **Connector**: Arrow to "Check Exempt Numbers"
+
+#### Check Exempt Numbers
+- **Symbol**: Rectangle (Process)
+- **Description**: Check if dialed number is exempt
+- **Action**: `FIND parameter_master where Parameter_code = "EmergencyAlertExemptNumbers" AND (company matches opiCompany_num OR is global)`
+- **Condition**: `IF found AND BWdialedDigits is in exempt list`
+  - **Yes**:
+    - **Action**: `LOG "Dialed number is exempt, no alert generated"`
+    - **Action**: `RETURN`
+    - **Symbol**: Oval (End)
+  - **No**:
+    - **Connector**: Arrow to "Convert Call Time"
+
+#### Convert Call Time
+- **Symbol**: Rectangle (Process)
+- **Description**: Convert call time to property local time
+- **Action**: `SET ldPropertyTime = BWcallStartTime`
+- **Subprocess**: `FIND ServerTZMapping where property matches opiCompany_num`
+- **Condition**: `IF found`
+  - **Yes**:
+    - **Action**: `SET l_cPropertyZone = TZoffset`
+    - **Action**: `CONVERT ldPropertyTime to property time using l_cPropertyZone`
+    - **Connector**: Arrow to "Log Converted Time"
+  - **No**:
+    - **Action**: `FIND ext_company_num where key = "TIME-DIFF" and company matches opiCompany_num`
+    - **Condition**: `IF found`
+      - **Yes**:
+        - **Action**: `ADJUST ldPropertyTime by time difference in hours`
+      - **No**: (No action, proceed)
+    - **Connector**: Arrow to "Log Converted Time"
+
+#### Log Converted Time
+- **Symbol**: Rectangle (Process)
+- **Description**: Log the converted call time
+- **Action**: `LOG "Call time converted" with ldPropertyTime`
+- **Connector**: Arrow to "Determine Cloud PBX Type"
+
+#### Determine Cloud PBX Type
+- **Symbol**: Rectangle (Process)
+- **Description**: Determine Cloud PBX type
+- **Action**: `FIND parameter_master where Parameter_code = "CloudPBXType" and company matches opiCompany_num`
+- **Action**: `SET CloudPBXType = parameter value (default to empty if not found)`
+- **Connector**: Arrow to "Check Duplicate Alerts (IP)"
+
+#### Check Duplicate Alerts (IP)
+- **Symbol**: Diamond (Decision)
+- **Description**: Check for duplicate alerts by IP
+- **Condition**: `IF CloudPBXType IN ["peerless", "ooma"] AND BWsrcIpAdd is not empty`
+  - **Yes**:
+    - **Action**: `FIND Alert_Popups where Alert_Type = 9 AND propertyid = opiCompany_num AND AckIPAddress = BWsrcIpAdd`
+    - **Condition**: `IF found`
+      - **Yes**:
+        - **Action**: `LOG "Duplicate alert found by IP"`
+        - **Action**: `SET opResult = true`
+        - **Action**: `RETURN`
+        - **Symbol**: Oval (End)
+      - **No**:
+        - **Connector**: Arrow to "Check Duplicate Alerts (Time/Extension)"
+  - **No**:
+    - **Connector**: Arrow to "Check Duplicate Alerts (Time/Extension)"
+
+#### Check Duplicate Alerts (Time/Extension)
+- **Symbol**: Diamond (Decision)
+- **Description**: Check for duplicate alerts by time and extension
+- **Condition**: `IF ipBWEnterprise <> "ooma-emergency"`
+  - **Yes**:
+    - **Action**: `FIND Alert_Popups where Alert_Type = 9 AND EventDateTime = ldPropertyTime AND Extension = p_origination_ext# AND propertyid = opiCompany_num`
+    - **Condition**: `IF found`
+      - **Yes**:
+        - **Action**: `LOG "Duplicate alert found by time and extension"`
+        - **Action**: `SET opResult = true`
+        - **Action**: `RETURN`
+        - **Symbol**: Oval (End)
+      - **No**:
+        - **Connector**: Arrow to "Generate 911 Alarm"
+  - **No**:
+    - **Connector**: Arrow to "Generate 911 Alarm"
+
+#### Generate 911 Alarm
+- **Symbol**: Rectangle (Process)
+- **Description**: Generate the 911 alarm
+- **Action**: `SET opResult = true`
+- **Action**: `SET Pbxuser = cleaned BWclidName (remove special characters)`
+- **Action**: `RUN Generate_911_Alarms with parameters:`
+  - Company Number: `opiCompany_num`
+  - Extension: `p_origination_ext#`
+  - Event Time: `ldPropertyTime`
+  - Dialed Number: `BWdialedDigits`
+  - Priority: `0`
+  - User: `Pbxuser`
+- **Connector**: Arrow to "Update Alert_Popups"
+
+#### Update Alert_Popups
+- **Symbol**: Diamond (Decision)
+- **Description**: Check if IP address needs updating
+- **Condition**: `IF BWsrcIpAdd is not empty`
+  - **Yes**:
+    - **Action**: `FIND Alert_Popups where Alert_Type = 9 and matches event details`
+    - **Condition**: `IF found`
+      - **Yes**:
+        - **Action**: `UPDATE AckIPAddress = BWsrcIpAdd`
+      - **No**: (No action, proceed)
+    - **Connector**: Arrow to "End"
+  - **No**:
+    - **Connector**: Arrow to "End"
+
+#### End
+- **Symbol**: Oval
+- **Description**: End of the 911 Alarm Trigger Process
+- **Action**: `RETURN`
+
+---
+
+### How to Visualize This Flow Chart
+
+To create a visual flow chart, you can use a diagramming tool (e.g., Lucidchart, Draw.io, or Visio) and follow these guidelines:
+
+1. **Shapes**:
+   - **Oval**: Start and End points.
+   - **Rectangle**: Process steps (e.g., `SET`, `LOG`, `RUN`).
+   - **Diamond**: Decision points (e.g., `IF` conditions).
+   - **Arrow**: Connectors showing the flow between steps.
+
+2. **Structure**:
+   - Start at the top with the "Start" oval.
+   - Follow the linear flow for initial steps (Initialize Variables, Check Input Data).
+   - Branch out at decision points (e.g., Check Input Data, Determine Company Number) with "Yes" and "No" paths.
+   - Merge paths back where appropriate (e.g., after company number determination).
+   - End with the "End" oval, which can be reached from multiple exit points (e.g., RETURN statements).
+
+3. **Labels**:
+   - Label each shape with the action or condition (e.g., "SET opResult = false", "IF tt911AlarmTrigger has no data").
+   - Include brief descriptions for clarity (e.g., "Log call details").
+
+4. **Example Layout**:
+   ```
+   [Start]
+      |
+      v
+   [Initialize Variables]
+      |
+      v
+   [Check Input Data] ----> [No data to process] --> [End]
+      |
+      v
+   [Extract Call Details]
+      |
+      v
+   [Log Entry]
+      |
+      v
+   [Determine Company Number] --> [Yes: Run BWgetJazzCompanyNum] --> [Validate Company Number]
+      |                           |
+      |                           v
+      |                        [Check Peerless Emergency] --> [Yes: Process peerless] --> [End if opiCompany_num = 0]
+      |                           |                              |
+      |                           v                              v
+      |                        [Check User Mapping] ----------> [Validate Company Number]
+      |                           |
+      |                           v
+      |                        [Check Line Port Mapping] -----> [Validate Company Number]
+      |                           |
+      |                           v
+      |                        [Fallback Company Lookup] -----> [Validate Company Number]
+      |
+      v
+   [Validate Company Number] --> [opiCompany_num = 0] --> [End]
+      |
+      v
+   [Check Exempt Numbers] --> [Number is exempt] --> [End]
+      |
+      v
+   [Convert Call Time]
+      |
+      v
+   [Log Converted Time]
+      |
+      v
+   [Determine Cloud PBX Type]
+      |
+      v
+   [Check Duplicate Alerts (IP)] --> [Duplicate found] --> [End]
+      |
+      v
+   [Check Duplicate Alerts (Time/Extension)] --> [Duplicate found] --> [End]
+      |
+      v
+   [Generate 911 Alarm]
+      |
+      v
+   [Update Alert_Popups]
+      |
+      v
+   [End]
+   ```
+
+---
+
+### Notes
+
+- **Complexity**: The flow chart is moderately complex due to multiple decision points and branches, especially in the company number determination step. Ensure the diagram is clear by grouping related steps (e.g., user and line port mapping) and using color coding for paths.
+- **Pseudo-Code Alignment**: The flow chart directly follows the pseudo-code structure, ensuring every step is represented.
+- **Exit Points**: The program has multiple exit points (e.g., no data, company not found, exempt number, duplicates), each leading to the "End" oval.
+
+If you’d like a more detailed description of specific sections, a simplified version of the flow chart, or assistance with creating the diagram in a specific tool, let me know! Alternatively, I can generate a textual representation using ASCII art for a basic visualization, though it would be less detailed.
+
 ### What Does `DEFINE INPUT PARAMETER TABLE FOR tt911AlarmTrigger` Mean?
 
 In Progress 4GL (also known as OpenEdge ABL), this statement defines an **input parameter** for a program or procedure. Specifically, it indicates that the program expects a **temp-table** (a temporary, in-memory table) named `tt911AlarmTrigger` to be passed as input when the program is called.
